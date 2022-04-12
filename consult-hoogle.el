@@ -62,13 +62,8 @@
 This is adapted from `haskell-fontify-as-mode' but for better performance
 instead of running `haskell-mode' we just extract the font-lock parts from
 it we need."
-  (with-temp-buffer
-    (setq-local font-lock-defaults
-                '((haskell-font-lock-keywords)
-                  nil nil nil nil
-                  (font-lock-syntactic-face-function
-                   . haskell-syntactic-face-function)))
-    (insert text)
+  (with-current-buffer " *Hoogle Fontification*"
+    (erase-buffer) (insert text)
     (if (fboundp 'font-lock-ensure)
         (font-lock-ensure)
       (with-no-warnings (font-lock-fontify-buffer)))
@@ -139,7 +134,7 @@ it we need."
          (erase-buffer)
          (pcase action
            ('preview (when cand (consult-hoogle--details cand)))
-           ('return (kill-buffer-and-window)))))
+           ('return (kill-buffer-and-window) (kill-buffer " *Hoogle Fontification*")))))
 
 ;;;; Consult integration
 (defun consult-hoogle--search (&optional state action)
@@ -147,6 +142,7 @@ it we need."
 STATE is the optional state function passed to the consult--read."
   (let ((consult-async-min-input 0)
         (fun (or action (lambda (alist) (consult-hoogle--browse-url 'item alist)))))
+    (with-current-buffer (get-buffer-create " *Hoogle Fontification*" t) (let (haskell-mode-hook) (haskell-mode)))
     (funcall fun (consult--read (consult--async-command #'consult-hoogle--builder
                                   (consult--async-map #'consult-hoogle--format-result)
                                   (consult--async-highlight #'consult-hoogle--builder))
@@ -154,7 +150,8 @@ STATE is the optional state function passed to the consult--read."
                                 :lookup #'consult--lookup-candidate :state state :sort nil
                                 :keymap consult-hoogle-map
                                 :add-history (consult--async-split-thingatpt 'symbol)
-                                :history '(:input consult-hoogle--history)))))
+                                :history '(:input consult-hoogle--history)))
+    (when-let ((buf (get-buffer " *Hoogle Fontification*"))) (kill-buffer buf))))
 
 ;;;; Interactive Commands
 ;;;###autoload
@@ -164,7 +161,7 @@ By default this shows the documentation for the current candidate in a side
 window. This can be disabled by a prefix ARG."
   (interactive (list current-prefix-arg))
   (if arg (consult-hoogle--search)
-    (let* ((buf (get-buffer-create " *Hoogle Documentation*"))
+    (let* ((buf (get-buffer-create " *Hoogle Documentation*" t))
            (window (display-buffer buf '(display-buffer-in-side-window (window-height . ,(+ 3 vertico-count)) (side . bottom) (slot . -1)))))
       (with-selected-window window (consult-hoogle--search #'consult-hoogle--show-details)))))
 
