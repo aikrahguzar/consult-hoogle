@@ -24,7 +24,7 @@
 (require 'shr)
 
 ;;;; Variables
-(defcustom consult-hoogle-args "hoogle search --jsonl -q --count=50" "The hoogle invocation used to get results." :type 'string :group 'consult)
+(defcustom consult-hoogle-args "hoogle search --jsonl -q --count=250" "The hoogle invocation used to get results." :type 'string :group 'consult)
 
 (defvar consult-hoogle--history nil "Variable to store history for hoogle searches.")
 
