@@ -60,8 +60,7 @@
 (defun consult-hoogle--fontify (text)
   "Fontify TEXT, returning the fontified text.
 This is adapted from `haskell-fontify-as-mode' but for better performance
-instead of running `haskell-mode' we just extract the font-lock parts from
-it we need."
+we use the same buffer throughout."
   (with-current-buffer " *Hoogle Fontification*"
     (erase-buffer) (insert text)
     (if (fboundp 'font-lock-ensure)
