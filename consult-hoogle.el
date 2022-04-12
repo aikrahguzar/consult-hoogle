@@ -32,6 +32,8 @@
                              (define-key map (kbd "M-i") #'consult-hoogle-browse-item)
                              (define-key map (kbd "M-j") #'consult-hoogle-browse-package)
                              (define-key map (kbd "M-m") #'consult-hoogle-browse-module)
+                             (define-key map (kbd "M-<up>") #'consult-hoogle-scroll-docs-up)
+                             (define-key map (kbd "M-<down>") #'consult-hoogle-scroll-docs-down)
                              map))
 
 ;;;; Constructing the string to display
@@ -39,15 +41,14 @@
   "Build command line given CONFIG and INPUT."
   (pcase-let ((`(,arg . ,opts) (consult--command-split input)))
     (unless (string-blank-p arg)
-      (list :command (append (split-string-and-unquote consult-hoogle-args)
-                             (list arg) opts)
+      (list :command (append (split-string-and-unquote consult-hoogle-args) (list arg) opts)
             :highlight (cdr (consult--default-regexp-compiler input 'basic t))))))
 
 (defun consult-hoogle--format (lines) "Format the LINES from hoogle result."
        (seq-map #'consult-hoogle--format-result lines))
 
 (defun consult-hoogle--format-result (json) "Parse the JSON resturned by hoogle to construct a result."
-       (let* ((parsed (ignore-errors (json-parse-string json :object-type 'alist))))
+       (when-let ((parsed (ignore-errors (json-parse-string json :object-type 'alist))))
          (propertize (pcase (map-elt parsed 'type)
                        ("" (consult-hoogle--format-value parsed))
                        ("module" (consult-hoogle--format-module parsed))
@@ -57,8 +58,8 @@
 (defun consult-hoogle--fontify (text)
   "Fontify TEXT, returning the fontified text.
 This is adapted from `haskell-fontify-as-mode' but for better performance
-instead of running `haskell-mode' we just obtain the font-lock parts from
- it we need."
+instead of running `haskell-mode' we just extract the font-lock parts from
+it we need."
   (with-temp-buffer
     (setq-local font-lock-defaults
                 '((haskell-font-lock-keywords)
@@ -173,6 +174,12 @@ window. This can be disabled by a prefix ARG."
 
 (defun consult-hoogle-browse-package () "Browse the url for the package the current item belongs to." (interactive)
        (consult-hoogle--browse-url 'package (get-text-property 0 'consult--candidate (run-hook-with-args-until-success 'consult--completion-candidate-hook))))
+
+(defun consult-hoogle-scroll-docs-down (&optional arg) "Scroll the window with documentation ARG lines down." (interactive)
+       (with-selected-window (get-buffer-window " *Hoogle Documentation*") (scroll-down arg)))
+
+(defun consult-hoogle-scroll-docs-up (&optional arg) "Scroll the window with documentation ARG lines down." (interactive)
+       (with-selected-window (get-buffer-window " *Hoogle Documentation*") (scroll-up arg)))
 
 (provide 'consult-hoogle)
 
