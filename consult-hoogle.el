@@ -20,7 +20,7 @@
 (require 'consult)
 (require 'map)
 (require 'subr-x)
-(require 'haskell-font-lock)
+(require 'haskell-mode)
 (require 'shr)
 
 ;;;; Variables
@@ -54,20 +54,30 @@
                        ("package" (consult-hoogle--format-package parsed)))
                      'consult--candidate parsed)))
 
-(defun consult-hoogle--format-value-item (item) "Construct the display string for ITEM in value."
-       (if-let* ((name-and-type (split-string item "::" t " +"))
-                 (name (or (car name-and-type)))
-                 (type (or (cadr name-and-type))))
-           (concat (propertize name 'face 'haskell-definition-face) " :: " (propertize type 'face 'haskell-type-face))
-         (let ((words (split-string item)))
-           (concat (propertize (car words) 'face 'haskell-keyword-face) " " (propertize (string-join (cdr words) " ") 'face 'haskell-definition-face)))))
+(defun consult-hoogle--fontify (text)
+  "Fontify TEXT, returning the fontified text.
+This is adapted from `haskell-fontify-as-mode' but for better performance
+instead of running `haskell-mode' we just obtain the font-lock parts from
+ it we need."
+  (with-temp-buffer
+    (setq-local font-lock-defaults
+                '((haskell-font-lock-keywords)
+                  nil nil nil nil
+                  (font-lock-syntactic-face-function
+                   . haskell-syntactic-face-function)))
+    (insert text)
+    (if (fboundp 'font-lock-ensure)
+        (font-lock-ensure)
+      (with-no-warnings (font-lock-fontify-buffer)))
+    (buffer-substring (point-min) (point-max))))
 
 (defun consult-hoogle--format-value (alist) "Construct the disaply string from ALIST for a value."
        (let* ((item (map-elt alist 'item))
               (module (map-nested-elt alist '(module name) ""))
               (package (map-nested-elt alist '(package name) "")))
-         (concat (consult-hoogle--format-value-item item)
-                 " from " (propertize module 'face 'haskell-keyword-face) " in " (propertize package 'face 'haskell-quasi-quote-face))))
+         (concat (consult-hoogle--fontify item)
+                 (propertize " from " 'face 'font-lock-comment-face) (propertize module 'face 'haskell-keyword-face)
+                 (propertize " in " 'face 'font-lock-comment-face) (propertize package 'face 'haskell-quasi-quote-face))))
 
 (defun consult-hoogle--format-module (alist) "Construct the disaply string from ALIST for a module."
        (let ((name (cadr (split-string (map-elt alist 'item) nil t " +")))
@@ -107,7 +117,7 @@
        (let* ((item (map-elt alist 'item))
               (module (map-nested-elt alist '(module name) ""))
               (package (map-nested-elt alist '(package name) "")))
-         (insert (consult-hoogle--format-value-item item) "\n"
+         (insert (consult-hoogle--fontify item) "\n"
                  (propertize "Module: " 'face 'bold) (propertize module 'face 'haskell-keyword-face) "\n"
                  (propertize "Package: " 'face 'bold) (propertize package 'face 'haskell-quasi-quote-face) "\n")))
 
