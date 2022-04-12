@@ -24,7 +24,9 @@
 (require 'shr)
 
 ;;;; Variables
-(defcustom consult-hoogle-args "hoogle search --jsonl -q --count=250" "The hoogle invocation used to get results." :type 'string :group 'consult)
+(defcustom consult-hoogle-args "hoogle search --jsonl -q --count=100" "The hoogle invocation used to get results." :type 'string :group 'consult)
+
+(defcustom consult-hoogle-show-module-and-package t "Whether to show the package and module in the candidate line." :type 'boolean :group 'consult)
 
 (defvar consult-hoogle--history nil "Variable to store history for hoogle searches.")
 
@@ -32,8 +34,8 @@
                              (define-key map (kbd "M-i") #'consult-hoogle-browse-item)
                              (define-key map (kbd "M-j") #'consult-hoogle-browse-package)
                              (define-key map (kbd "M-m") #'consult-hoogle-browse-module)
-                             (define-key map (kbd "M-<up>") #'consult-hoogle-scroll-docs-up)
-                             (define-key map (kbd "M-<down>") #'consult-hoogle-scroll-docs-down)
+                             (define-key map (kbd "M-<up>") #'consult-hoogle-scroll-docs-down)
+                             (define-key map (kbd "M-<down>") #'consult-hoogle-scroll-docs-up)
                              map))
 
 ;;;; Constructing the string to display
@@ -73,12 +75,12 @@ it we need."
     (buffer-substring (point-min) (point-max))))
 
 (defun consult-hoogle--format-value (alist) "Construct the disaply string from ALIST for a value."
-       (let* ((item (map-elt alist 'item))
+       (let* ((item (consult-hoogle--fontify (map-elt alist 'item)))
               (module (map-nested-elt alist '(module name) ""))
               (package (map-nested-elt alist '(package name) "")))
-         (concat (consult-hoogle--fontify item)
-                 (propertize " from " 'face 'font-lock-comment-face) (propertize module 'face 'haskell-keyword-face)
-                 (propertize " in " 'face 'font-lock-comment-face) (propertize package 'face 'haskell-quasi-quote-face))))
+                 (if (not consult-hoogle-show-module-and-package) item
+                   (concat item (propertize " from " 'face 'font-lock-comment-face) (propertize module 'face 'haskell-keyword-face)
+                   (propertize " in " 'face 'font-lock-comment-face) (propertize package 'face 'haskell-quasi-quote-face)))))
 
 (defun consult-hoogle--format-module (alist) "Construct the disaply string from ALIST for a module."
        (let ((name (cadr (split-string (map-elt alist 'item) nil t " +")))
