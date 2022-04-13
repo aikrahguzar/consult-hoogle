@@ -133,7 +133,7 @@ we use the same buffer throughout."
          (erase-buffer)
          (pcase action
            ('preview (when cand (consult-hoogle--details cand)))
-           ('return (kill-buffer-and-window) (kill-buffer " *Hoogle Fontification*")))))
+           ('return (kill-buffer-and-window)))))
 
 ;;;; Consult integration
 (defun consult-hoogle--search (&optional state action)
@@ -142,15 +142,16 @@ STATE is the optional state function passed to the consult--read."
   (let ((consult-async-min-input 0)
         (fun (or action (lambda (alist) (consult-hoogle--browse-url 'item alist)))))
     (with-current-buffer (get-buffer-create " *Hoogle Fontification*" t) (let (haskell-mode-hook) (haskell-mode)))
-    (funcall fun (consult--read (consult--async-command #'consult-hoogle--builder
-                                  (consult--async-map #'consult-hoogle--format-result)
-                                  (consult--async-highlight #'consult-hoogle--builder))
-                                :prompt "Hoogle: " :require-match t :initial (consult--async-split-initial "")
-                                :lookup #'consult--lookup-candidate :state state :sort nil
-                                :keymap consult-hoogle-map
-                                :add-history (consult--async-split-thingatpt 'symbol)
-                                :history '(:input consult-hoogle--history)))
-    (when-let ((buf (get-buffer " *Hoogle Fontification*"))) (kill-buffer buf))))
+    (unwind-protect
+        (funcall fun (consult--read (consult--async-command #'consult-hoogle--builder
+                                      (consult--async-map #'consult-hoogle--format-result)
+                                      (consult--async-highlight #'consult-hoogle--builder))
+                                    :prompt "Hoogle: " :require-match t :initial (consult--async-split-initial "")
+                                    :lookup #'consult--lookup-candidate :state state :sort nil
+                                    :keymap consult-hoogle-map
+                                    :add-history (consult--async-split-thingatpt 'symbol)
+                                    :history '(:input consult-hoogle--history)))
+      (when-let ((buf (get-buffer " *Hoogle Fontification*"))) (kill-buffer buf)))))
 
 ;;;; Interactive Commands
 ;;;###autoload
