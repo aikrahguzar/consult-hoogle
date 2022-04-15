@@ -80,7 +80,7 @@ we use the same buffer throughout."
                             ("" type)
                             ("module" (if (eq type 'module) 'item type))
                             ("package" (if (eq type 'package) 'item type))))
-                (url (if (eq 'item type-url) .item (alist-get 'url (alist-get type-url alist)))))
+                (url (if (eq 'item type-url) .url (alist-get 'url (alist-get type-url alist)))))
            (if (or (eq type 'package) (equal .type "package"))
                 (browse-url (concat url "index.html"))
              (browse-url url))
@@ -88,7 +88,7 @@ we use the same buffer throughout."
 
 ;;;; Constructing the details buffer for the selected result
 (defun consult-hoogle--doc-line (label elem item) "Construct a line for doc buffer from LABEL ELEM and ITEM."
-       (concat (propertize label 'face 'bold) (if elem elem item) "\n"))
+       (concat (propertize label 'face 'bold) (if (equal "" elem) item elem) "\n"))
 
 (defun consult-hoogle--details (alist) "Construct the details from ALIST."
        (let-alist alist
