@@ -29,13 +29,20 @@
 
 (defvar consult-hoogle--history nil "Variable to store history for hoogle searches.")
 
+(defvar consult-hoogle-tab-map (let ((map (make-sparse-keymap)))
+                                 (set-keymap-parent map universal-argument-map)
+                                 (define-key map (kbd "p") #'consult-hoogle-restrict-to-package)
+                                 (define-key map (kbd "m") #'consult-hoogle-restrict-to-module)
+                                 (define-key map (kbd "b") #'consult-hoogle-restrict-to-module-level-beg)
+                                 map))
+
 (defvar consult-hoogle-map (let ((map (make-sparse-keymap)))
                              (define-key map (kbd "M-i") #'consult-hoogle-browse-item)
                              (define-key map (kbd "M-j") #'consult-hoogle-browse-package)
                              (define-key map (kbd "M-m") #'consult-hoogle-browse-module)
                              (define-key map (kbd "M-<up>") #'consult-hoogle-scroll-docs-down)
                              (define-key map (kbd "M-<down>") #'consult-hoogle-scroll-docs-up)
-                             (define-key map (kbd "TAB") #'consult-hoogle-restrict-to-package)
+                             (define-key map (kbd "TAB") consult-hoogle-tab-map)
                              map))
 
 ;;;; Constructing the string to display
@@ -108,12 +115,12 @@ we use the same buffer throughout."
            ('return (kill-buffer-and-window)))))
 
 ;;;; Refining searches
-(defun consult-hoogle--add-to-input (addition) "Add ADDITION to the async part of the input."
+(defun consult-hoogle--add-to-input (&rest addition) "Add ADDITION to the async part of the input."
        (let* ((initial (plist-get (alist-get consult-async-split-style consult-async-split-styles-alist) :initial))
               (input (minibuffer-contents)))
          (delete-minibuffer-contents)
          (insert (replace-regexp-in-string (if initial (rx bos (0+ space) (group (opt punct))) (rx bos))
-                                           (lambda (match) (concat match (when (not (match-string 1 match)) initial) addition " "))
+                                           (lambda (match) (concat match (when (not (match-string 1 match)) initial) (apply #'concat addition) " "))
                                            input))))
 
 (defun consult-hoogle--get (key alist) "Return the value for KEY from the ALIST."
@@ -174,7 +181,16 @@ window. This can be disabled by a prefix ARG."
 
 (defun consult-hoogle-restrict-to-package (package) "Restrict the search to PACKAGE."
        (interactive (list (consult-hoogle--get 'package (consult-hoogle--candidate))))
-       (when package (consult-hoogle--add-to-input (concat "+" package))))
+       (when package (consult-hoogle--add-to-input "+" (downcase package))))
+
+(defun consult-hoogle-restrict-to-module (module) "Restrict the search to MODULE."
+  (interactive (list (consult-hoogle--get 'module (consult-hoogle--candidate)))) (when module (consult-hoogle--add-to-input "+" module)))
+
+(defun consult-hoogle-restrict-to-module-level-beg (module level)
+  "Restrict to a part of MODULE heirarchy.
+If called with numeric prefix LEVEL only use first ARG levels of module."
+  (interactive (list (consult-hoogle--get 'module (consult-hoogle--candidate)) (prefix-numeric-value current-prefix-arg)))
+  (when module (consult-hoogle--add-to-input "+" (progn (string-match (rx-to-string `(: bos (= ,level (: (0+ (not ".")) (?? "."))))) module) (match-string 0 module)))))
 
 (provide 'consult-hoogle)
 
