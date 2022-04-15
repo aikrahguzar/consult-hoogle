@@ -18,7 +18,6 @@
 
 ;;;; Packages
 (require 'consult)
-(require 'map)
 (require 'subr-x)
 (require 'haskell-mode)
 (require 'shr)
@@ -36,6 +35,7 @@
                              (define-key map (kbd "M-m") #'consult-hoogle-browse-module)
                              (define-key map (kbd "M-<up>") #'consult-hoogle-scroll-docs-down)
                              (define-key map (kbd "M-<down>") #'consult-hoogle-scroll-docs-up)
+                             (define-key map (kbd "TAB") #'consult-hoogle-restrict-to-package)
                              map))
 
 ;;;; Constructing the string to display
@@ -49,93 +49,84 @@
 (defun consult-hoogle--format (lines) "Format the LINES from hoogle result."
        (seq-map #'consult-hoogle--format-result lines))
 
-(defun consult-hoogle--format-result (json) "Parse the JSON resturned by hoogle to construct a result."
-       (when-let ((parsed (ignore-errors (json-parse-string json :object-type 'alist))))
-         (propertize (pcase (map-elt parsed 'type)
-                       ("" (consult-hoogle--format-value parsed))
-                       ("module" (consult-hoogle--format-module parsed))
-                       ("package" (consult-hoogle--format-package parsed)))
-                     'consult--candidate parsed)))
-
 (defun consult-hoogle--fontify (text)
   "Fontify TEXT, returning the fontified text.
 This is adapted from `haskell-fontify-as-mode' but for better performance
 we use the same buffer throughout."
   (with-current-buffer " *Hoogle Fontification*"
-    (erase-buffer) (insert text)
-    (if (fboundp 'font-lock-ensure)
-        (font-lock-ensure)
-      (with-no-warnings (font-lock-fontify-buffer)))
-    (buffer-substring (point-min) (point-max))))
+    (erase-buffer) (insert text) (font-lock-ensure) (buffer-substring (point-min) (point-max))))
 
-(defun consult-hoogle--format-value (alist) "Construct the disaply string from ALIST for a value."
-       (let* ((item (consult-hoogle--fontify (map-elt alist 'item)))
-              (module (map-nested-elt alist '(module name) ""))
-              (package (map-nested-elt alist '(package name) "")))
-                 (if (not consult-hoogle-show-module-and-package) item
-                   (concat item (propertize " from " 'face 'font-lock-comment-face) (propertize module 'face 'haskell-keyword-face)
-                   (propertize " in " 'face 'font-lock-comment-face) (propertize package 'face 'haskell-quasi-quote-face)))))
+(defun consult-hoogle--format-value (item in module from package) "Construct the disaply string from ITEM IN MODULE FROM and PACKAGE."
+         (if (not consult-hoogle-show-module-and-package) item (concat item from module in package)))
 
-(defun consult-hoogle--format-module (alist) "Construct the disaply string from ALIST for a module."
-       (let ((name (cadr (split-string (map-elt alist 'item) nil t " +")))
-             (package (map-nested-elt alist '(package name) "")))
-         (concat "Module " (propertize name 'face 'haskell-keyword-face) " in " (propertize package 'face 'haskell-quasi-quote-face))))
+(defun consult-hoogle--name (item &optional face) "Return name of ITEM with FACE." (propertize (cadr (split-string item nil t " +")) 'face face))
 
-(defun consult-hoogle--format-package (alist) "Construct the disaply string from ALIST for a package."
-       (let ((name (cadr (split-string (map-elt alist 'item) nil t " +"))))
-         (concat "Package " (propertize name 'face 'haskell-quasi-quote-face))))
+(defun consult-hoogle--format-result (json) "Parse the JSON resturned by hoogle to construct a result."
+       (when-let ((parsed (ignore-errors (json-parse-string json :object-type 'alist))))
+         (let* ((in (propertize " in " 'face 'font-lock-comment-face))
+                (from (propertize " from " 'face 'font-lock-comment-face))
+                (module (cl-callf propertize (alist-get 'name (alist-get 'module parsed) "") 'face 'haskell-keyword-face))
+                (package (cl-callf propertize (alist-get 'name (alist-get 'package parsed) "") 'face 'haskell-quasi-quote-face))
+                (display (pcase (alist-get 'type parsed)
+                           (""  (consult-hoogle--format-value (cl-callf consult-hoogle--fontify (alist-get 'item parsed)) from module in package))
+                           ("module" (concat "Module " (cl-callf consult-hoogle--name (alist-get 'item parsed) 'haskell-keyword-face) in package))
+                           ("package" (concat "Package " (cl-callf consult-hoogle--name (alist-get 'item parsed) 'haskell-quasi-quote-face))))))
+           (propertize display 'consult--candidate parsed))))
 
 ;;;; Following the urls from hoogle results.
 (defun consult-hoogle--browse-url (type &optional alist) "Open the url of TYPE from ALIST."
-       (if-let ((type-alist (map-elt alist 'type))
-                (type-url (pcase type-alist
+       (let-alist alist
+       (if-let ((type-url (pcase .type
                             ("" type)
                             ("module" (if (eq type 'module) 'item type))
                             ("package" (if (eq type 'package) 'item type))))
-                (url (pcase type-url
-                       ('item (map-elt alist 'url))
-                       ('module (map-nested-elt alist '(module url)))
-                       ('package (map-nested-elt alist '(package url))))))
-           (if (or (eq type 'package) (equal type-alist "package"))
+                (url (if (eq 'item type-url) .item (alist-get 'url (alist-get type-url alist)))))
+           (if (or (eq type 'package) (equal .type "package"))
                 (browse-url (concat url "index.html"))
              (browse-url url))
-         (message "No suitable url for current alist.")))
+         (message "No suitable url for current alist."))))
 
 ;;;; Constructing the details buffer for the selected result
+(defun consult-hoogle--doc-line (label elem item) "Construct a line for doc buffer from LABEL ELEM and ITEM."
+       (concat (propertize label 'face 'bold) (if elem elem item) "\n"))
+
 (defun consult-hoogle--details (alist) "Construct the details from ALIST."
-       (pcase (map-elt alist 'type)
-         ("" (consult-hoogle--details-value alist))
-         ("module" (consult-hoogle--details-module alist))
-         ("package" (consult-hoogle--details-package alist)))
-       (let ((beg (point)))
-         (insert (map-elt alist 'docs)) (shr-render-region beg (point-max)) (goto-char (point-min))))
-
-(defun consult-hoogle--details-value (alist) "Construct the disaply string from ALIST for a value."
-       (let* ((item (map-elt alist 'item))
-              (module (map-nested-elt alist '(module name) ""))
-              (package (map-nested-elt alist '(package name) "")))
-         (insert (consult-hoogle--fontify item) "\n"
-                 (propertize "Module: " 'face 'bold) (propertize module 'face 'haskell-keyword-face) "\n"
-                 (propertize "Package: " 'face 'bold) (propertize package 'face 'haskell-quasi-quote-face) "\n")))
-
-(defun consult-hoogle--details-module (alist) "Construct the disaply string from ALIST for a module."
-       (let ((name (cadr (split-string (map-elt alist 'item) nil t " +")))
-             (package (map-nested-elt alist '(package name) "")))
-         (insert (propertize "Module: " 'face 'bold) (propertize name 'face 'haskell-keyword-face) "\n"
-                 (propertize "Package: " 'face 'bold) (propertize package 'face 'haskell-quasi-quote-face) "\n")))
-
-(defun consult-hoogle--details-package (alist) "Construct the disaply string from ALIST for a package."
-       (let ((name (cadr (split-string (map-elt alist 'item) nil t " +"))))
-         (insert (propertize "Package: " 'face 'bold) (propertize name 'face 'haskell-quasi-quote-face) "\n")))
+       (let-alist alist
+         (let* ((package-line (consult-hoogle--doc-line "Package: " .package.name .item))
+                (module-line (unless (equal "package" .type) (consult-hoogle--doc-line "Module: " .module.name .item)))
+                (item-line (when (equal .type "") (concat .item "\n"))))
+           (insert (concat item-line module-line package-line)))
+         (let ((beg (point)))
+           (insert .docs) (shr-render-region beg (point-max)) (goto-char (point-min)))))
 
 (defun consult-hoogle--show-details (action cand) "Show the details for the current CAND and handle ACTION."
-       (when (equal (buffer-name) " *Hoogle Documentation*")
+       (when-let (((equal (buffer-name) " *Hoogle Documentation*"))
+                  (inhibit-read-only t))
          (erase-buffer)
          (pcase action
            ('preview (when cand (consult-hoogle--details cand)))
            ('return (kill-buffer-and-window)))))
 
+;;;; Refining searches
+(defun consult-hoogle--add-to-input (addition) "Add ADDITION to the async part of the input."
+       (let* ((initial (plist-get (alist-get consult-async-split-style consult-async-split-styles-alist) :initial))
+              (input (minibuffer-contents)))
+         (delete-minibuffer-contents)
+         (insert (replace-regexp-in-string (if initial (rx bos (0+ space) (group (opt punct))) (rx bos))
+                                           (lambda (match) (concat match (when (not (match-string 1 match)) initial) addition " "))
+                                           input))))
+
+(defun consult-hoogle--get (key alist) "Return the value for KEY from the ALIST."
+       (let-alist alist
+         (pcase .type
+           ("" (alist-get 'name (alist-get key alist)))
+           ("module" (if (eq key 'module) .item .package.name))
+           ("package" .item))))
+
 ;;;; Consult integration
+(defun consult-hoogle--candidate () "Get the current candidate."
+       (get-text-property 0 'consult--candidate (run-hook-with-args-until-success 'consult--completion-candidate-hook)))
+
 (defun consult-hoogle--search (&optional state action)
   "Search the local hoogle database and take ACTION with the selection.
 STATE is the optional state function passed to the consult--read."
@@ -163,22 +154,27 @@ window. This can be disabled by a prefix ARG."
   (if arg (consult-hoogle--search)
     (let* ((buf (get-buffer-create " *Hoogle Documentation*" t))
            (window (display-buffer buf '(display-buffer-in-side-window (window-height . ,(+ 3 vertico-count)) (side . bottom) (slot . -1)))))
+      (with-current-buffer buf (visual-line-mode) (read-only-mode))
       (with-selected-window window (consult-hoogle--search #'consult-hoogle--show-details)))))
 
 (defun consult-hoogle-browse-item () "Browse the url for current item." (interactive)
-       (consult-hoogle--browse-url 'item (get-text-property 0 'consult--candidate (run-hook-with-args-until-success 'consult--completion-candidate-hook))))
+       (consult-hoogle--browse-url 'item (consult-hoogle--candidate)))
 
 (defun consult-hoogle-browse-module () "Browse the url for the module the current item belongs to." (interactive)
-       (consult-hoogle--browse-url 'module (get-text-property 0 'consult--candidate (run-hook-with-args-until-success 'consult--completion-candidate-hook))))
+       (consult-hoogle--browse-url 'module (consult-hoogle--candidate)))
 
 (defun consult-hoogle-browse-package () "Browse the url for the package the current item belongs to." (interactive)
-       (consult-hoogle--browse-url 'package (get-text-property 0 'consult--candidate (run-hook-with-args-until-success 'consult--completion-candidate-hook))))
+       (consult-hoogle--browse-url 'package (consult-hoogle--candidate)))
 
 (defun consult-hoogle-scroll-docs-down (&optional arg) "Scroll the window with documentation ARG lines down." (interactive)
        (with-selected-window (get-buffer-window " *Hoogle Documentation*") (scroll-down arg)))
 
 (defun consult-hoogle-scroll-docs-up (&optional arg) "Scroll the window with documentation ARG lines down." (interactive)
        (with-selected-window (get-buffer-window " *Hoogle Documentation*") (scroll-up arg)))
+
+(defun consult-hoogle-restrict-to-package (package) "Restrict the search to PACKAGE."
+       (interactive (list (consult-hoogle--get 'package (consult-hoogle--candidate))))
+       (when package (consult-hoogle--add-to-input (concat "+" package))))
 
 (provide 'consult-hoogle)
 
