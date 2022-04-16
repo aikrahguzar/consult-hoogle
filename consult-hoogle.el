@@ -23,18 +23,11 @@
 (require 'shr)
 
 ;;;; Variables
-(defcustom consult-hoogle-args "hoogle search --jsonl -q --count=100" "The hoogle invocation used to get results." :type 'string :group 'consult)
+(defcustom consult-hoogle-args "hoogle search --jsonl -q --count=250" "The hoogle invocation used to get results." :type 'string :group 'consult)
 
 (defcustom consult-hoogle-show-module-and-package t "Whether to show the package and module in the candidate line." :type 'boolean :group 'consult)
 
 (defvar consult-hoogle--history nil "Variable to store history for hoogle searches.")
-
-(defvar consult-hoogle-tab-map (let ((map (make-sparse-keymap)))
-                                 (set-keymap-parent map universal-argument-map)
-                                 (define-key map (kbd "p") #'consult-hoogle-restrict-to-package)
-                                 (define-key map (kbd "m") #'consult-hoogle-restrict-to-module)
-                                 (define-key map (kbd "b") #'consult-hoogle-restrict-to-module-level-beg)
-                                 map))
 
 (defvar consult-hoogle-map (let ((map (make-sparse-keymap)))
                              (define-key map (kbd "M-i") #'consult-hoogle-browse-item)
@@ -42,7 +35,10 @@
                              (define-key map (kbd "M-m") #'consult-hoogle-browse-module)
                              (define-key map (kbd "M-<up>") #'consult-hoogle-scroll-docs-down)
                              (define-key map (kbd "M-<down>") #'consult-hoogle-scroll-docs-up)
-                             (define-key map (kbd "TAB") consult-hoogle-tab-map)
+                             (define-key map (kbd "TAB p") #'consult-hoogle-restrict-to-package)
+                             (define-key map (kbd "TAB m") #'consult-hoogle-restrict-to-module)
+                             (define-key map (kbd "TAB b") #'consult-hoogle-restrict-to-module-level-beg)
+
                              map))
 
 ;;;; Constructing the string to display
@@ -190,7 +186,7 @@ window. This can be disabled by a prefix ARG."
   "Restrict to a part of MODULE heirarchy.
 If called with numeric prefix LEVEL only use first ARG levels of module."
   (interactive (list (consult-hoogle--get 'module (consult-hoogle--candidate)) (prefix-numeric-value current-prefix-arg)))
-  (when module (consult-hoogle--add-to-input "+" (progn (string-match (rx-to-string `(: bos (= ,level (: (0+ (not ".")) (?? "."))))) module) (match-string 0 module)))))
+  (when module (consult-hoogle--add-to-input "+" (progn (string-match (rx-to-string `(: bos (= ,level (: (1+ (not ".")) (?? "."))))) module) (match-string 0 module)))))
 
 (provide 'consult-hoogle)
 
