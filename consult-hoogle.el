@@ -112,13 +112,18 @@ we use the same buffer throughout."
            ('return (kill-buffer-and-window)))))
 
 ;;;; Refining searches
-(defun consult-hoogle--add-to-input (&rest addition) "Add ADDITION to the async part of the input."
+(defun consult-hoogle--modify-async-input (fun) "Change async part of input to (funcall FUN async-input)."
        (let* ((initial (plist-get (alist-get consult-async-split-style consult-async-split-styles-alist) :initial))
-              (input (minibuffer-contents)))
+              (separator (plist-get (alist-get consult-async-split-style consult-async-split-styles-alist) :separator))
+              (input (minibuffer-contents))
+              (initial (when initial (progn (string-match (rx bos (group (opt punct))) input) (match-string 1 input))))
+              (separator (if separator separator initial))
+              (async-rx (rx-to-string `(: bos ,(or initial "") (0+ (not ,separator))))))
          (delete-minibuffer-contents)
-         (insert (replace-regexp-in-string (if initial (rx bos (0+ space) (group (opt punct))) (rx bos))
-                                           (lambda (match) (concat match (when (not (match-string 1 match)) initial) (apply #'concat addition) " "))
-                                           input))))
+         (insert (string-trim (replace-regexp-in-string async-rx (lambda (match) (funcall fun match)) input)))))
+
+(defun consult-hoogle--add-to-input (&rest addition) "Add ADDITION to the async part of the input."
+       (let ((pos (point))) (consult-hoogle--modify-async-input (lambda (match) (apply #'concat match " " addition))) (goto-char pos)))
 
 (defun consult-hoogle--get (key &optional alist) "Return the value for KEY from the ALIST."
        (let ((alist (or alist (consult-hoogle--candidate))))
@@ -177,8 +182,8 @@ window. This can be disabled by a prefix ARG."
 (defun consult-hoogle-scroll-docs-up (&optional arg) "Scroll the window with documentation ARG lines down." (interactive)
        (with-selected-window (get-buffer-window " *Hoogle Documentation*") (scroll-up arg)))
 
-(defun consult-hoogle-restrict-to-package (package) "Restrict the search to PACKAGE."
-       (interactive (list (consult-hoogle--get 'package))) (when package (consult-hoogle--add-to-input "+" (downcase package))))
+(defun consult-hoogle-restrict-to-package (package &optional arg) "Restrict the search to PACKAGE. With prefix ARG exluce package from search."
+       (interactive (list (consult-hoogle--get 'package) current-prefix-arg)) (when package (consult-hoogle--add-to-input (if arg "-" "+") (downcase package))))
 
 (defun consult-hoogle-restrict-to-module (module &optional arg) "Restrict the search to MODULE. With prefix ARG exluce module from search."
        (interactive (list (consult-hoogle--get 'module) current-prefix-arg)) (when module (consult-hoogle--add-to-input (if arg "-" "+") module)))
@@ -187,34 +192,25 @@ window. This can be disabled by a prefix ARG."
   "Restrict to a part of MODULE heirarchy.
 If called with numeric prefix LEVEL only use first ARG levels of module."
   (interactive (list (consult-hoogle--get 'module) (prefix-numeric-value current-prefix-arg)))
-  (when-let (module
-             (init (if (> level 0) "+" "-"))
-             (level (abs level)))
-    (consult-hoogle--add-to-input init (progn (string-match (rx-to-string `(: bos (= ,level (: (1+ (not ".")) (?? "."))))) module) (match-string 0 module)))))
+  (when module (consult-hoogle--add-to-input
+                (if (> level 0) "+" "-")
+                (progn (string-match (rx-to-string `(: bos (= ,(abs level) (: (1+ (not ".")) (?? "."))))) module) (match-string 0 module)))))
 
 (defun consult-hoogle-restrict-to-module-level-end (module level)
   "Restrict to a part of MODULE heirarchy.
 If called with numeric prefix LEVEL only use last ARG levels of module."
   (interactive (list (consult-hoogle--get 'module) (prefix-numeric-value current-prefix-arg)))
-  (when-let (module
-             (init (if (> level 0) "+" "-"))
-             (level (abs level)))
-    (consult-hoogle--add-to-input init (progn (string-match (rx-to-string `(: (= ,level (: (1+ (not ".")) (?? "."))) eos)) module) (match-string 0 module)))))
+  (when module
+    (consult-hoogle--add-to-input
+     (if (> level 0) "+" "-") (progn (string-match (rx-to-string `(: (= ,(abs level) (: (1+ (not ".")) (?? "."))) eos)) module) (match-string 0 module)))))
 
 (defun consult-hoogle-clear-restrictions (arg)
   "Clear all restrictions and exclusions on the search.
 With positive prefix ARG only clear restrictions. With negative prefix
 only clear exclusions."
   (interactive (list (when current-prefix-arg (prefix-numeric-value current-prefix-arg))))
-  (let* ((initial (plist-get (alist-get consult-async-split-style consult-async-split-styles-alist) :initial))
-         (separator (plist-get (alist-get consult-async-split-style consult-async-split-styles-alist) :separator))
-         (input (minibuffer-contents))
-         (initial (when initial (progn (string-match (rx bos (group (opt punct))) input) (match-string 1 input))))
-         (separator (if separator separator initial))
-         (async-rx (rx-to-string `(: bos ,(or initial "") (0+ (not ,separator)))))
-         (restriction-rx (rx-to-string `(: ,(if (not arg) '(or "+" "-") (if (> arg 0) "+" "-")) (0+ (not space)) (1+ space)))))
-    (delete-minibuffer-contents)
-    (insert (replace-regexp-in-string async-rx (lambda (match) (replace-regexp-in-string restriction-rx "" match)) input))))
+  (let* ((restriction-rx (rx-to-string `(: ,(if (not arg) '(or "+" "-") (if (> arg 0) "+" "-")) (0+ (not space)) (or (1+ space) eos)))))
+    (consult-hoogle--modify-async-input (lambda (match) (replace-regexp-in-string restriction-rx "" match)))))
 
 (provide 'consult-hoogle)
 
