@@ -25,6 +25,9 @@
 ;;;; Variables
 (defcustom consult-hoogle-args "hoogle search --jsonl -q --count=250" "The hoogle invocation used to get results." :type 'string :group 'consult)
 
+(defcustom consult-hoogle-cabal-args "cabal-hoogle run -- search --jsonl -q --count=250"
+  "The cabal-hoogle invocation used to get results for cabal hoogle." :type 'string :group 'consult)
+
 (defcustom consult-hoogle-show-module-and-package t "Whether to show the package and module in the candidate line." :type 'boolean :group 'consult)
 
 (defvar consult-hoogle--history nil "Variable to store history for hoogle searches.")
@@ -139,7 +142,7 @@ we use the same buffer throughout."
 
 (defun consult-hoogle--search (&optional state action)
   "Search the local hoogle database and take ACTION with the selection.
-STATE is the optional state function passed to the consult--read."
+STATE is the optional state function passed to the `consult--read'."
   (let ((consult-async-min-input 0)
         (fun (or action (lambda (alist) (consult-hoogle--browse-url 'item alist)))))
     (with-current-buffer (get-buffer-create " *Hoogle Fontification*" t) (let (haskell-mode-hook) (haskell-mode)))
@@ -163,9 +166,23 @@ window. This can be disabled by a prefix ARG."
   (interactive (list current-prefix-arg))
   (if arg (consult-hoogle--search)
     (let* ((buf (get-buffer-create " *Hoogle Documentation*" t))
-           (window (display-buffer buf '(display-buffer-in-side-window (window-height . ,(+ 3 vertico-count)) (side . bottom) (slot . -1)))))
+           (window (display-buffer buf '(display-buffer-in-side-window (window-height . ,(+ 3 (if (bound-and-true-p vertico-count)
+                                                                                                  vertico-count 10)))
+                                         (side . bottom) (slot . -1)))))
       (with-current-buffer buf (visual-line-mode) (read-only-mode))
       (with-selected-window window (consult-hoogle--search #'consult-hoogle--show-details)))))
+
+;;;###autoload
+(defun consult-hoogle-cabal (arg)
+  "Search the local hoogle database for current project.
+Uses cabal-hoogle and the database should have been generated
+by running `cabal-hoogle generate'.
+By default this shows the documentation for the current candidate in a side
+window. This can be disabled by a prefix ARG."
+  (interactive (list current-prefix-arg))
+  (let ((consult-hoogle-args consult-hoogle-cabal-args)
+        (default-directory (haskell-cabal-find-dir)))
+    (consult-hoogle arg)))
 
 (defun consult-hoogle-browse-item () "Browse the url for current item." (interactive)
        (consult-hoogle--browse-url 'item (consult-hoogle--candidate)))
