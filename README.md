@@ -1,3 +1,5 @@
+# Moved to: https://codeberg.org/rahguzar/consult-hoogle
+
 # consult-hoogle: A hoogle front end for Emacs using consult. 
 [![GPL 3](https://img.shields.io/badge/license-GPLv3-blue.svg)](COPYING)
 
